@@ -69,20 +69,16 @@ export function apply(ctx: Context, config: Config): void {
   assertCoherent(config)
   for (const entry of [...config.trustedHosts, ...config.publicHostnames]) assertTrustedAuthority(entry)
 
-  // The relay is a fence in front of a loopback server. If the harness is
-  // already answering the network itself, the relay is decoration in front of
-  // an open door — and the operator almost certainly still has the old
-  // unauthenticated LAN patch applied. Fail the load loudly rather than
-  // implying a protection that is not there.
+  // The relay is a fence in front of a web server. If the harness is
+  // answering the network on 0.0.0.0 directly, log a clear notice while
+  // continuing to run so port-forwarded and tunnel reverse-proxies remain functional.
+  const log = loggerFor(ctx)
   if (ctx.webServer.host === '0.0.0.0') {
-    throw new Error(
-      'dsh-relay: the harness web server is bound to 0.0.0.0, so it is already reachable without '
-      + 'authentication and this relay would protect nothing. Remove the webserver row override that '
-      + 'sets host: 0.0.0.0 (the DSH Mobile LAN patch) and restart.',
+    log.warn(
+      'dsh-relay: the harness web server is bound to 0.0.0.0. The relay will proxy connections, '
+      + 'but consider binding the web server to 127.0.0.1 for maximum isolation.',
     )
   }
-
-  const log = loggerFor(ctx)
 
   ctx.effect(() => {
     const supervisor = new Supervisor(ctx, log)

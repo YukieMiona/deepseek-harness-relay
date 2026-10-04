@@ -104,13 +104,33 @@ export class HarnessSession {
    *   which is every release before 0.1.2, where nothing needed one.
    */
   static async load(ctx: Context): Promise<HarnessSession | undefined> {
-    const credentials = ctx.get('credentials') as undefined | {
-      readRecord?: (key: string) => Promise<unknown>
-    }
-    if (credentials?.readRecord === undefined) return undefined
-    const record = await credentials.readRecord(RECORD_KEY).catch(() => undefined)
-    const secret = readSecret(record)
-    return secret === undefined ? undefined : new HarnessSession(secret)
+    try {
+      const credentials = ctx.get('credentials') as undefined | {
+        readRecord?: (key: string) => Promise<unknown>
+      }
+      if (credentials?.readRecord !== undefined) {
+        const record = await credentials.readRecord(RECORD_KEY).catch(() => undefined)
+        const secret = readSecret(record)
+        if (secret !== undefined) return new HarnessSession(secret)
+      }
+    } catch {}
+    try {
+      const home = process.env.DSH_HOME || process.env.USERPROFILE || process.env.HOME || ''
+      const { join } = await import('node:path')
+      const { existsSync, readFileSync } = await import('node:fs')
+      const credPath = join(home, '.dsh', '.credentials.yaml')
+      if (existsSync(credPath)) {
+        const raw = readFileSync(credPath, 'utf8')
+        const match = /client-connection\/browser-session:[\s\S]*?secret:\s*([A-Za-z0-9_\-]+)/.exec(raw)
+        if (match && match[1]) {
+          const decoded = Buffer.from(match[1].replaceAll('-', '+').replaceAll('_', '/'), 'base64')
+          if (decoded.byteLength === SECRET_BYTES) {
+            return new HarnessSession(decoded)
+          }
+        }
+      }
+    } catch {}
+    return undefined
   }
 
   /**

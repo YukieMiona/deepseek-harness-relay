@@ -1,3 +1,4 @@
+import { isLoopbackHostname, localAddresses } from './fence.ts'
 /**
  * The relay's own endpoints, everything under `/relay`.
  *
@@ -75,10 +76,32 @@ function refuse(req: IncomingMessage, res: ServerResponse, message: string): voi
  * @returns the QR as inline SVG.
  */
 async function renderQr(context: RouteContext, code: { code: string, expiresAt: number }): Promise<string> {
+  let reachableUrl = context.origin
+  try {
+    const u = new URL(reachableUrl)
+    if (isLoopbackHostname(u.hostname)) {
+      if (context.config.publicHostnames.length > 0) {
+        const target = context.config.publicHostnames[0]
+        if (target) { u.hostname = target.replace(/:\d+$/, ''); u.port = ''; reachableUrl = u.origin }
+      } else {
+        const lan = localAddresses()[0]
+        if (lan !== undefined) {
+          u.hostname = lan
+          reachableUrl = u.origin
+        }
+      }
+    }
+  } catch {}
+    let isPublicDomain = false;
+  try {
+    const parsed = new URL(reachableUrl);
+    isPublicDomain = context.config.publicHostnames.some(h => parsed.hostname === h.replace(/:\d+$/, ''))
+      || (!isLoopbackHostname(parsed.hostname) && !localAddresses().includes(parsed.hostname));
+  } catch {}
   const payload = pairingPayload({
-    url: context.origin,
+    url: reachableUrl,
     plainUrl: context.plainOrigin,
-    fingerprint: context.fingerprint,
+    fingerprint: isPublicDomain ? undefined : context.fingerprint,
     code,
   })
   return QRCode.toString(JSON.stringify(payload), {
@@ -232,11 +255,27 @@ export async function handleRelayRoute(
     // claim one. The same path serves both so a QR and a typed URL agree.
     if (isOperator(identity)) {
       const code = auth.pairing.peek(now) ?? auth.pairing.issue(config.pairingCodeLength, config.pairingWindowMs, now)
+      let displayUrl = context.origin
+      try {
+        const u = new URL(displayUrl)
+        if (isLoopbackHostname(u.hostname)) {
+          if (context.config.publicHostnames.length > 0) {
+            const target = context.config.publicHostnames[0]
+            if (target) { u.hostname = target.replace(/:\d+$/, ''); u.port = ''; displayUrl = u.origin }
+          } else {
+            const lan = localAddresses()[0]
+            if (lan !== undefined) {
+              u.hostname = lan
+              displayUrl = u.origin
+            }
+          }
+        }
+      } catch {}
       sendHtml(res, 200, pairPage({
         qrSvg: await renderQr(context, code),
         code: code.code,
         expiresInSeconds: Math.max(0, Math.round((code.expiresAt - now) / 1000)),
-        url: context.origin,
+        url: displayUrl,
         plainUrl: context.plainOrigin,
         fingerprint: context.fingerprint,
       }))
@@ -283,11 +322,14 @@ export async function handleRelayRoute(
     const granted = context.config.compat.addressGrants
       && auth.identify({ headers: {}, address: context.address, local: false }, now).credential === 'address-grant'
     if (wantsJson(req)) {
+            const currentHost = (req.headers.host ?? '').replace(/:\d+$/, '');
+      const isPublicHost = context.config.publicHostnames.some(h => currentHost === h.replace(/:\d+$/, ''))
+        || (!isLoopbackHostname(currentHost) && !localAddresses().includes(currentHost));
       sendJson(res, 200, {
         deviceId: paired.device.id,
         token: paired.token,
         expiresAt: paired.device.expiresAt,
-        ...context.fingerprint !== undefined && { fingerprint: context.fingerprint },
+        ...(!isPublicHost && context.fingerprint !== undefined) && { fingerprint: context.fingerprint },
       })
       return
     }

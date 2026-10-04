@@ -31,7 +31,7 @@ interface SettingsScopeLike {
 
 /** The slice of the client context this plugin uses. */
 interface RelayClientContext {
-  settingsScope: { bind: (spec: { namespace: string }) => SettingsScopeLike }
+  settingsScope?: { bind: (spec: { namespace: string }) => SettingsScopeLike }
   slots: {
     inject: (name: string, register: () => unknown) => void
     register: (spec: {
@@ -44,29 +44,27 @@ interface RelayClientContext {
 }
 
 /** Services the renderer must have before this bundle registers anything. */
-export const inject = ['slots', 'settingsScope']
+export const inject = ['slots']
 
 /**
  * Register the card.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: RelayClientContext): void {
+  // If settingsScope is not present on this host surface, gracefully skip mounting
+  // the in-app settings card while leaving the relay server and independent /relay pages 100% operational.
+  if (!ctx.settingsScope || typeof ctx.settingsScope.bind !== 'function') {
+    ctx.logger?.warn?.('dsh-relay: settingsScope service not found on this surface; skipping plugin card registration')
+    return
+  }
+
   const scope = ctx.settingsScope.bind({ namespace: RELAY_NAMESPACE })
-  // `slots.inject` waits for the slot's declaration rather than assuming the
-  // owning package applied first: apply order between plugins is unconstrained,
-  // and a bare register into an undeclared slot is an error.
   ctx.slots.inject(CARD_SLOT, () => ctx.slots.register({
     name: CARD_SLOT,
     key: RELAY_NAMESPACE,
     inject: () => ({
-      // The reserved compartment: the renderer binds each bare observable here
-      // to a `use<Name>` hook, so the component subscribes to nothing itself.
       hooks: { relayCard: scope },
       setField: async (field: string, value: unknown): Promise<boolean> => {
-        // A rejected write leaves the stored value alone and the next snapshot
-        // shows what actually stands, so the card needs no rollback of its own.
-        // It does need to know whether the write landed: its save keeps the
-        // staged edits and says so rather than clearing them over a failure.
         try {
           await scope.set(field, value)
           return true

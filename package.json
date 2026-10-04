@@ -14,11 +14,11 @@
   "author": "sorsama",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sorsama/deepseek-harness-relay.git"
+    "url": "git+https://github.com/YukieMiona/deepseek-harness-relay.git"
   },
-  "homepage": "https://github.com/sorsama/deepseek-harness-relay#readme",
+  "homepage": "https://github.com/YukieMiona/deepseek-harness-relay#readme",
   "bugs": {
-    "url": "https://github.com/sorsama/deepseek-harness-relay/issues"
+    "url": "https://github.com/YukieMiona/deepseek-harness-relay/issues"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -28,17 +28,11 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./package.json": "./package.json",
-    "./client": {
-      "types": "./lib/types/client/index.d.ts",
-      "default": "./lib/client.js"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
     "lib/index.js.map",
-    "lib/client.js",
-    "lib/client.js.map",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
@@ -47,12 +41,6 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
-      ]
     }
   },
   "scripts": {
